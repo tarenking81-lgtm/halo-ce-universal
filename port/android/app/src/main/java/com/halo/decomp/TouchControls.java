@@ -20,7 +20,8 @@ import android.view.View;
  * Xbox pad.
  *
  * Left half of the screen: a floating move stick (it centres where the
- * finger lands). Right half, outside the buttons: drag to look. The fire
+ * finger lands). Right half, outside the buttons: swipe to look, 1:1 like a
+ * mouse (nativeLook). The fire
  * button also looks while the finger slides on it, so you can shoot and aim
  * with one thumb.
  *
@@ -32,6 +33,13 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     static native void nativeSetEnabled(boolean enabled);
     static native void nativeSetState(int leftX, int leftY, int rightX, int rightY,
                                       int leftTrigger, int rightTrigger, int buttons);
+    static native void nativeLook(float dx, float dy);
+
+    /**
+     * Mouse pixels of look per dp of finger travel: about 120 degrees for a
+     * swipe across half the screen. Raise it to turn faster.
+     */
+    private static final float LOOK_SPEED = 2.2f;
 
     // SDL_GamepadButton
     private static final int SOUTH = 0, EAST = 1, WEST = 2, NORTH = 3, BACK = 4, START = 6,
@@ -75,8 +83,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         new Button("GREN", LEFT_TRIGGER, true, true, 265, 135, 30),
         new Button("ZOOM", RIGHT_STICK, true, true, 40, 300, 26),
         new Button("G⇄", RIGHT_SHOULDER, true, true, 205, 270, 24),
+        new Button("CROUCH", LEFT_STICK, true, true, 285, 50, 28),
         // left thumb
-        new Button("CROUCH", LEFT_STICK, false, true, 55, 225, 30),
         new Button("LIGHT", LEFT_SHOULDER, false, true, 55, 300, 24),
         // top row
         new Button("BACK", BACK, false, false, 45, 35, 22),
@@ -94,7 +102,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     private static final class Finger {
         int role;
         Button button;
-        float originX, originY, x, y;
+        float originX, originY, x, y, lastX, lastY;
     }
 
     private final SparseArray<Finger> fingers = new SparseArray<>();
@@ -182,7 +190,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         if (!nativeReady)
             return;
         float[] move = stick(moveFinger, 60);
-        float[] look = stick(lookFinger, 55);
+        float[] look = { 0, 0 }; // looking goes through nativeLook
         int mask = 0;
         boolean leftTrigger = false, rightTrigger = false;
         for (Button button : buttons) {
@@ -297,6 +305,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
                     continue;
                 finger.x = event.getX(i);
                 finger.y = event.getY(i);
+                if (finger == lookFinger)
+                    look(finger);
                 changed = true;
             }
             break;
@@ -329,8 +339,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
             return false;
 
         Finger finger = new Finger();
-        finger.originX = finger.x = x;
-        finger.originY = finger.y = y;
+        finger.originX = finger.x = finger.lastX = x;
+        finger.originY = finger.y = finger.lastY = y;
 
         Button hit = null;
         for (Button button : buttons) {
@@ -360,6 +370,21 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         }
         fingers.put(id, finger);
         return true;
+    }
+
+    /** the look finger's travel since the last move, to the game as mouse motion */
+    private void look(Finger finger) {
+        float dx = (finger.x - finger.lastX) / density * LOOK_SPEED;
+        float dy = (finger.y - finger.lastY) / density * LOOK_SPEED;
+        finger.lastX = finger.x;
+        finger.lastY = finger.y;
+        if (!nativeReady || (dx == 0 && dy == 0))
+            return;
+        try {
+            nativeLook(dx, dy);
+        } catch (UnsatisfiedLinkError e) {
+            nativeReady = false;
+        }
     }
 
     private boolean fingerUp(int id) {
