@@ -4,6 +4,7 @@ import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.view.Display;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 
 import org.libsdl.app.SDLActivity;
@@ -27,6 +28,9 @@ public class HaloActivity extends SDLActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         preferHighestRefreshRate();
         acquireMulticastLock();
+        // the on-screen controls, over the game (TouchControls.java)
+        addContentView(new TouchControls(this), new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         // a new version looked for while the game starts
         Updater.start(this);
     }
