@@ -81,3 +81,23 @@ JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeSetState(JNIEnv 
 	atomic_store(&touch_axes[SDL_GAMEPAD_AXIS_RIGHT_TRIGGER], clamp_axis(right_trigger, 0));
 	atomic_store(&touch_buttons, (unsigned)buttons);
 }
+
+/* Looking: a swipe on the right half of the screen turns the view as a mouse
+does, by as much as the finger moves and at once, rather than as the right
+stick, whose turn rate ramps up. The motion goes to the game's mouse look
+(port/linux/src/xinput_sdl.c) as SDL mouse motion, in mouse pixels. */
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeLook(JNIEnv *env, jclass cls, jfloat dx, jfloat dy)
+{
+	SDL_Event event;
+
+	(void)env;
+	(void)cls;
+	if (!atomic_load(&touch_enabled) || !SDL_WasInit(SDL_INIT_EVENTS) || (dx == 0.0f && dy == 0.0f))
+		return;
+	SDL_zero(event);
+	event.type = SDL_EVENT_MOUSE_MOTION;
+	event.motion.timestamp = SDL_GetTicksNS();
+	event.motion.xrel = dx;
+	event.motion.yrel = dy;
+	SDL_PushEvent(&event);
+}
