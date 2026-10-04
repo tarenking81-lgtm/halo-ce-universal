@@ -26,6 +26,7 @@ enum handle_type
 	_handle_context,
 	_handle_gamepad,
 	_handle_audio,
+	_handle_touch,
 };
 
 struct handle
@@ -187,25 +188,39 @@ int host_sdl_poll_event(void *event)
 
 /* ---------- gamepads */
 
+/* The on-screen controls (host_touch.c) are one more gamepad, an Xbox One
+pad by type so the guest gives it the first port, which it only has while no
+physical controller is connected (TouchControls.java turns it off then). */
+#define TOUCH_GAMEPAD_ID 0x7ffffff0u
+static char touch_gamepad_object;
+
+static int is_touch(uint32_t gamepad)
+{
+	return handle_get(gamepad, _handle_touch) != NULL;
+}
+
 int host_sdl_get_gamepads(uint32_t *ids, int capacity)
 {
-	int count = 0, index;
+	int count = 0, index, found = 0;
 	SDL_JoystickID *list = SDL_GetGamepads(&count);
 
+	if (host_touch_enabled() && found < capacity)
+		ids[found++] = TOUCH_GAMEPAD_ID;
 	if (!list)
-		return 0;
-	if (count > capacity)
-		count = capacity;
-	for (index = 0; index < count; index++)
-		ids[index] = list[index];
+		return found;
+	for (index = 0; index < count && found < capacity; index++)
+		ids[found++] = list[index];
 	SDL_free(list);
-	return count;
+	return found;
 }
 
 uint32_t host_sdl_open_gamepad(uint32_t id)
 {
-	SDL_Gamepad *gamepad = SDL_OpenGamepad((SDL_JoystickID)id);
+	SDL_Gamepad *gamepad;
 
+	if (id == TOUCH_GAMEPAD_ID)
+		return handle_new(_handle_touch, &touch_gamepad_object);
+	gamepad = SDL_OpenGamepad((SDL_JoystickID)id);
 	if (gamepad)
 		host_logf(HOST_LOG_INFO, "gamepad %u: %s (type %d, %04x:%04x)", (unsigned)id, SDL_GetGamepadName(gamepad),
 			(int)SDL_GetGamepadType(gamepad), SDL_GetGamepadVendor(gamepad), SDL_GetGamepadProduct(gamepad));
@@ -214,34 +229,48 @@ uint32_t host_sdl_open_gamepad(uint32_t id)
 
 uint32_t host_sdl_gamepad_from_id(uint32_t id)
 {
+	if (id == TOUCH_GAMEPAD_ID)
+		return host_touch_enabled() ? handle_new(_handle_touch, &touch_gamepad_object) : 0;
 	return handle_new(_handle_gamepad, SDL_GetGamepadFromID((SDL_JoystickID)id));
 }
 
 int host_sdl_gamepad_axis(uint32_t gamepad, int axis)
 {
-	SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+	SDL_Gamepad *object;
 
+	if (is_touch(gamepad))
+		return host_touch_axis(axis);
+	object = handle_get(gamepad, _handle_gamepad);
 	return object ? SDL_GetGamepadAxis(object, (SDL_GamepadAxis)axis) : 0;
 }
 
 int host_sdl_gamepad_button(uint32_t gamepad, int button)
 {
-	SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+	SDL_Gamepad *object;
 
+	if (is_touch(gamepad))
+		return host_touch_button(button);
+	object = handle_get(gamepad, _handle_gamepad);
 	return object ? SDL_GetGamepadButton(object, (SDL_GamepadButton)button) : 0;
 }
 
 int host_sdl_gamepad_type(uint32_t gamepad)
 {
-	SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+	SDL_Gamepad *object;
 
+	if (is_touch(gamepad))
+		return SDL_GAMEPAD_TYPE_XBOXONE;
+	object = handle_get(gamepad, _handle_gamepad);
 	return object ? SDL_GetGamepadType(object) : SDL_GAMEPAD_TYPE_UNKNOWN;
 }
 
 int host_sdl_rumble_gamepad(uint32_t gamepad, uint32_t low, uint32_t high, uint32_t milliseconds)
 {
-	SDL_Gamepad *object = handle_get(gamepad, _handle_gamepad);
+	SDL_Gamepad *object;
 
+	if (is_touch(gamepad))
+		return 0;
+	object = handle_get(gamepad, _handle_gamepad);
 	return object ? SDL_RumbleGamepad(object, (Uint16)low, (Uint16)high, milliseconds) : 0;
 }
 

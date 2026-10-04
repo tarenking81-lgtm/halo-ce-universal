@@ -93,4 +93,10 @@ void *host_resolve_import(const char *name);
 
 void *host_gl_resolve(const char *name);
 
+/* ---------- on-screen controls (host_touch.c) */
+
+int host_touch_enabled(void);
+int host_touch_axis(int axis);     /* SDL_GamepadAxis */
+int host_touch_button(int button); /* SDL_GamepadButton */
+
 #endif
